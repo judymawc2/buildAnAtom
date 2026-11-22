@@ -1,0 +1,1720 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>建造原子 - 交互式物理化学仿真模拟</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&display=swap');
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background-color: #f4f7fb;
+      color: #1e293b;
+      touch-action: none;
+    }
+
+    /* Custom Scrollbar for panels if needed */
+    ::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 9999px;
+    }
+
+    /* PhET Style Panel */
+    .phet-panel {
+      background: #ffffff;
+      border: 2px solid #cbd5e1;
+      border-radius: 14px;
+      box-shadow: 0 3px 10px rgba(15, 23, 42, 0.06);
+      transition: all 0.2s ease;
+    }
+
+    /* Particle 3D Sphere Shading */
+    .particle-proton {
+      background: radial-gradient(circle at 32% 30%, #ff8a65, #e64a19 65%, #9a2406 100%);
+      box-shadow: 0 3px 6px rgba(185, 28, 28, 0.35), inset 0 1px 2px rgba(255,255,255,0.6);
+    }
+    .particle-neutron {
+      background: radial-gradient(circle at 32% 30%, #cbd5e1, #64748b 68%, #334155 100%);
+      box-shadow: 0 3px 6px rgba(51, 65, 85, 0.35), inset 0 1px 2px rgba(255,255,255,0.6);
+    }
+    .particle-electron {
+      background: radial-gradient(circle at 32% 30%, #7dd3fc, #0284c7 65%, #0c4a6e 100%);
+      box-shadow: 0 2px 5px rgba(2, 132, 199, 0.4), inset 0 1px 2px rgba(255,255,255,0.7);
+    }
+
+    /* Bucket Tray Styling */
+    .bucket-bowl {
+      background: linear-gradient(180deg, #e2e8f0 0%, #cbd5e1 45%, #94a3b8 100%);
+      border: 2px solid #64748b;
+      border-radius: 14px 14px 28px 28px;
+      box-shadow: inset 0 4px 8px rgba(0,0,0,0.12), 0 4px 10px rgba(0,0,0,0.08);
+    }
+
+    /* PhET Orange Reset Button */
+    .reset-btn {
+      background: radial-gradient(circle at 35% 30%, #ffb74d, #f57c00 70%, #e65100 100%);
+      border: 2.5px solid #ffffff;
+      box-shadow: 0 4px 10px rgba(230, 81, 0, 0.35);
+      transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .reset-btn:hover {
+      transform: scale(1.08) rotate(-18deg);
+    }
+    .reset-btn:active {
+      transform: scale(0.95) rotate(-45deg);
+    }
+
+    /* Nav Tab Active State */
+    .nav-tab {
+      transition: all 0.2s ease;
+    }
+    .nav-tab.active {
+      background: #ffffff;
+      color: #0f172a;
+      box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.12);
+      transform: translateY(-2px);
+    }
+
+    /* Periodic Table Cell */
+    .pt-cell {
+      aspect-ratio: 1 / 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      border-radius: 3px;
+      transition: all 0.15s ease;
+    }
+
+    /* Floating Dragged Particle */
+    #drag-ghost {
+      position: fixed;
+      pointer-events: none;
+      z-index: 9999;
+      transform: translate(-50%, -50%) scale(1.18);
+      display: none;
+    }
+
+    /* Pulse highlight for drop zone */
+    @keyframes pulseRing {
+      0% { transform: scale(0.96); opacity: 0.5; }
+      50% { transform: scale(1.03); opacity: 0.9; }
+      100% { transform: scale(0.96); opacity: 0.5; }
+    }
+    .drop-highlight {
+      animation: pulseRing 1.2s infinite ease-in-out;
+    }
+
+    /* Celebration Star Bounce */
+    @keyframes popIn {
+      0% { transform: scale(0.4); opacity: 0; }
+      70% { transform: scale(1.15); opacity: 1; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .pop-in {
+      animation: popIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    }
+  </style>
+</head>
+<body class="flex flex-col h-screen w-screen overflow-hidden select-none">
+
+  <!-- Drag Ghost Element -->
+  <div id="drag-ghost" class="w-9 h-9 rounded-full flex items-center justify-center text-white font-black text-base"></div>
+
+  <!-- Main Workspace Container -->
+  <div id="app-main" class="flex-1 flex flex-col md:flex-row relative overflow-hidden bg-gradient-to-b from-[#eef4fb] to-[#ffffff]">
+
+    <!-- ==================== BUILD / SYMBOL VIEW ==================== -->
+    <div id="lab-view" class="flex-1 flex flex-col md:flex-row h-full w-full overflow-hidden">
+
+      <!-- Left / Center Interactive Atom Canvas Area -->
+      <div class="flex-1 flex flex-col relative h-full min-h-0">
+
+        <!-- Top Status Bar (Mobile & Desktop Header) -->
+        <div class="flex items-center justify-between px-3 pt-2.5 pb-1 z-10 pointer-events-none">
+          <div class="flex items-center gap-2 pointer-events-auto">
+            <div class="bg-white/90 backdrop-blur border border-slate-200 px-3 py-1 rounded-full shadow-sm flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-orange-500 animate-pulse"></span>
+              <span class="font-bold text-slate-800 text-xs sm:text-sm tracking-wide">建造原子</span>
+              <span class="text-[11px] text-slate-400 hidden sm:inline">| 互动物理化学实验室</span>
+            </div>
+          </div>
+
+          <!-- Particle Quick Counters (Top Center/Right on Mobile) -->
+          <div class="flex items-center gap-1.5 sm:gap-2.5 bg-white/90 backdrop-blur border border-slate-200 px-2.5 py-1 rounded-full shadow-sm pointer-events-auto text-xs sm:text-sm">
+            <div class="flex items-center gap-1" title="质子数">
+              <span class="w-3.5 h-3.5 rounded-full particle-proton inline-block"></span>
+              <span class="text-slate-600 font-medium">质子:</span>
+              <span id="stat-protons" class="font-extrabold text-orange-600 w-4 text-center">0</span>
+            </div>
+            <span class="text-slate-300">|</span>
+            <div class="flex items-center gap-1" title="中子数">
+              <span class="w-3.5 h-3.5 rounded-full particle-neutron inline-block"></span>
+              <span class="text-slate-600 font-medium">中子:</span>
+              <span id="stat-neutrons" class="font-extrabold text-slate-700 w-4 text-center">0</span>
+            </div>
+            <span class="text-slate-300">|</span>
+            <div class="flex items-center gap-1" title="电子数">
+              <span class="w-3.5 h-3.5 rounded-full particle-electron inline-block"></span>
+              <span class="text-slate-600 font-medium">电子:</span>
+              <span id="stat-electrons" class="font-extrabold text-sky-600 w-4 text-center">0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Center Interactive Canvas Container -->
+        <div id="canvas-wrapper" class="flex-1 relative w-full min-h-0 flex items-center justify-center">
+          <canvas id="atom-canvas" class="w-full h-full block cursor-grab active:cursor-grabbing"></canvas>
+
+          <!-- Floating Model Radio Controls (Bottom-Left of Canvas) -->
+          <div class="absolute bottom-2 left-3 z-10 phet-panel px-3 py-2 text-xs sm:text-sm">
+            <div class="font-bold text-slate-700 mb-1 text-[11px] uppercase tracking-wider">模型视图</div>
+            <div class="flex flex-col gap-1.5">
+              <label class="flex items-center gap-2 cursor-pointer hover:text-sky-600">
+                <input type="radio" name="model-type" value="orbits" checked class="accent-sky-600 w-3.5 h-3.5 cursor-pointer" />
+                <span class="font-medium">轨道 (Orbits)</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer hover:text-sky-600">
+                <input type="radio" name="model-type" value="cloud" class="accent-sky-600 w-3.5 h-3.5 cursor-pointer" />
+                <span class="font-medium">电子云 (Cloud)</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Floating Center Badges (Element Name / Ion Status / Unstable) -->
+          <div id="atom-labels-overlay" class="absolute top-3 left-1/2 -translate-x-1/2 pointer-events-none flex flex-col items-center gap-1 z-10">
+            <div id="label-element-name" class="text-2xl sm:text-3xl font-black text-orange-600 tracking-wide drop-shadow-sm hidden">
+              氢
+            </div>
+            <div id="label-ion-status" class="text-xs sm:text-sm font-extrabold px-2.5 py-0.5 rounded-full bg-white/90 border border-slate-200 shadow-sm hidden">
+              中性原子
+            </div>
+            <div id="label-stability-status" class="text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 shadow-sm hidden">
+              稳定
+            </div>
+          </div>
+
+          <!-- Helper Hint Toast -->
+          <div id="canvas-hint" class="absolute bottom-2 right-3 pointer-events-none hidden lg:flex items-center gap-1.5 text-[11px] text-slate-500 bg-white/80 px-2.5 py-1 rounded-full border border-slate-200">
+            <span>💡 提示：拖拽下方粒子到原子中，或从原子中拖出粒子</span>
+          </div>
+        </div>
+
+        <!-- Bottom Particle Buckets Tray -->
+        <div class="px-2 sm:px-6 pb-2 pt-1 z-10 flex items-end justify-center gap-2 sm:gap-5">
+          <!-- Protons Bucket -->
+          <div class="flex flex-col items-center w-28 sm:w-36">
+            <div class="flex items-center gap-1 mb-1">
+              <button onclick="adjustParticle('proton', -1)" class="w-5 h-5 rounded-full bg-slate-200 hover:bg-orange-200 text-slate-700 font-bold text-xs flex items-center justify-center transition" title="减少1个质子">−</button>
+              <span class="text-xs sm:text-sm font-bold text-slate-700">质子 (+)</span>
+              <button onclick="adjustParticle('proton', 1)" class="w-5 h-5 rounded-full bg-slate-200 hover:bg-orange-200 text-slate-700 font-bold text-xs flex items-center justify-center transition" title="添加1个质子">+</button>
+            </div>
+            <div id="bucket-proton" data-type="proton" class="bucket-bowl w-full h-14 sm:h-16 relative flex items-center justify-center cursor-grab active:cursor-grabbing overflow-hidden group">
+              <div id="bucket-proton-particles" class="relative w-full h-full pointer-events-none"></div>
+              <span class="absolute bottom-0.5 text-[10px] font-bold text-slate-700/80 bg-white/60 px-1.5 rounded">拖动添加</span>
+            </div>
+          </div>
+
+          <!-- Neutrons Bucket -->
+          <div class="flex flex-col items-center w-28 sm:w-36">
+            <div class="flex items-center gap-1 mb-1">
+              <button onclick="adjustParticle('neutron', -1)" class="w-5 h-5 rounded-full bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs flex items-center justify-center transition" title="减少1个中子">−</button>
+              <span class="text-xs sm:text-sm font-bold text-slate-700">中子 (0)</span>
+              <button onclick="adjustParticle('neutron', 1)" class="w-5 h-5 rounded-full bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs flex items-center justify-center transition" title="添加1个中子">+</button>
+            </div>
+            <div id="bucket-neutron" data-type="neutron" class="bucket-bowl w-full h-14 sm:h-16 relative flex items-center justify-center cursor-grab active:cursor-grabbing overflow-hidden">
+              <div id="bucket-neutron-particles" class="relative w-full h-full pointer-events-none"></div>
+              <span class="absolute bottom-0.5 text-[10px] font-bold text-slate-700/80 bg-white/60 px-1.5 rounded">拖动添加</span>
+            </div>
+          </div>
+
+          <!-- Electrons Bucket -->
+          <div class="flex flex-col items-center w-28 sm:w-36">
+            <div class="flex items-center gap-1 mb-1">
+              <button onclick="adjustParticle('electron', -1)" class="w-5 h-5 rounded-full bg-slate-200 hover:bg-sky-200 text-slate-700 font-bold text-xs flex items-center justify-center transition" title="减少1个电子">−</button>
+              <span class="text-xs sm:text-sm font-bold text-slate-700">电子 (−)</span>
+              <button onclick="adjustParticle('electron', 1)" class="w-5 h-5 rounded-full bg-slate-200 hover:bg-sky-200 text-slate-700 font-bold text-xs flex items-center justify-center transition" title="添加1个电子">+</button>
+            </div>
+            <div id="bucket-electron" data-type="electron" class="bucket-bowl w-full h-14 sm:h-16 relative flex items-center justify-center cursor-grab active:cursor-grabbing overflow-hidden">
+              <div id="bucket-electron-particles" class="relative w-full h-full pointer-events-none"></div>
+              <span class="absolute bottom-0.5 text-[10px] font-bold text-slate-700/80 bg-white/60 px-1.5 rounded">拖动添加</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Sidebar: Collapsible Panels & Controls -->
+      <div class="w-full md:w-80 lg:w-88 bg-[#e6edf5] border-t md:border-t-0 md:border-l border-slate-300 p-2.5 flex flex-row md:flex-col gap-2 overflow-x-auto md:overflow-y-auto shrink-0 z-20">
+
+        <!-- 1. Periodic Table Panel (Always visible in both Atom & Symbol) -->
+        <div class="phet-panel p-2.5 shrink-0 min-w-[230px] md:min-w-0">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="font-bold text-xs sm:text-sm text-slate-800 flex items-center gap-1.5">
+              <span>元素周期表</span>
+              <span id="pt-current-badge" class="text-[11px] bg-orange-100 text-orange-700 px-1.5 py-0.2 rounded font-bold hidden">H - 氢</span>
+            </span>
+            <button onclick="togglePanel('pt-body', this)" class="w-5 h-5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs flex items-center justify-center">−</button>
+          </div>
+          <div id="pt-body" class="transition-all">
+            <!-- 18-column Periodic Table Grid (Periods 1 to 7) -->
+            <div id="periodic-table-grid" class="grid grid-cols-18 gap-[2px] bg-slate-100 p-1 rounded border border-slate-200" style="grid-template-columns: repeat(18, minmax(0, 1fr));"></div>
+            <div class="flex justify-between items-center mt-1 text-[10px] text-slate-500">
+              <span>支持 1–10 号元素 (氢 → 氖)</span>
+              <span class="inline-block w-2.5 h-2.5 bg-orange-400 rounded-sm"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2A. ATOM MODE PANELS: Net Charge & Mass Number -->
+        <div id="atom-mode-panels" class="flex flex-row md:flex-col gap-2 shrink-0">
+
+          <!-- Net Charge Panel -->
+          <div class="phet-panel p-2.5 min-w-[210px] md:min-w-0">
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="font-bold text-xs sm:text-sm text-slate-800">净电荷 (Net Charge)</span>
+              <button onclick="togglePanel('charge-body', this)" class="w-5 h-5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs flex items-center justify-center">−</button>
+            </div>
+            <div id="charge-body" class="flex items-center gap-2.5">
+              <!-- Visual Charge Meter -->
+              <div class="flex-1 bg-slate-50 border border-slate-200 rounded-lg p-1.5 flex flex-col justify-between h-20">
+                <div class="flex items-center justify-between text-[10px] font-bold">
+                  <span class="text-rose-600">+ 正电荷</span>
+                  <span class="text-slate-400">0</span>
+                  <span class="text-sky-600">− 负电荷</span>
+                </div>
+                <!-- Paired +/- cancellation visual -->
+                <div id="charge-pairs-box" class="flex flex-wrap gap-0.5 items-center justify-center overflow-hidden max-h-9 my-0.5">
+                  <span class="text-[10px] text-slate-400">无电荷粒子</span>
+                </div>
+                <!-- Meter bar -->
+                <div class="w-full h-2.5 bg-slate-200 rounded-full relative overflow-hidden">
+                  <div class="absolute left-1/2 top-0 bottom-0 w-0.5 bg-slate-500 z-10"></div>
+                  <div id="charge-meter-fill" class="h-full bg-slate-400 transition-all duration-200 absolute top-0" style="left: 50%; width: 0%;"></div>
+                </div>
+              </div>
+              <!-- Numeric Readout -->
+              <div id="net-charge-value" class="w-12 h-12 rounded-xl border-2 border-slate-300 bg-slate-50 flex items-center justify-center font-black text-xl text-slate-700 shrink-0">
+                0
+              </div>
+            </div>
+          </div>
+
+          <!-- Mass Number Panel -->
+          <div class="phet-panel p-2.5 min-w-[190px] md:min-w-0">
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="font-bold text-xs sm:text-sm text-slate-800">质量数 (Mass Number)</span>
+              <button onclick="togglePanel('mass-body', this)" class="w-5 h-5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs flex items-center justify-center">−</button>
+            </div>
+            <div id="mass-body" class="flex items-center justify-between gap-2">
+              <!-- Spring Scale Visual -->
+              <div class="flex-1 flex flex-col items-center bg-slate-50 border border-slate-200 rounded-lg p-1.5">
+                <div class="w-full flex items-center justify-between text-[10px] text-slate-500 font-medium px-1">
+                  <span>质子 + 中子</span>
+                  <span id="mass-breakdown" class="font-bold text-slate-700">0 + 0</span>
+                </div>
+                <div class="w-full bg-slate-200 h-2.5 rounded-full mt-1.5 overflow-hidden">
+                  <div id="mass-bar-fill" class="h-full bg-emerald-500 transition-all duration-200" style="width: 0%;"></div>
+                </div>
+              </div>
+              <div id="mass-number-value" class="w-12 h-12 rounded-xl border-2 border-slate-300 bg-slate-50 flex items-center justify-center font-black text-xl text-slate-800 shrink-0">
+                0
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2B. SYMBOL MODE PANEL: Atomic Symbol Card -->
+        <div id="symbol-mode-panel" class="phet-panel p-3 hidden shrink-0 min-w-[230px] md:min-w-0">
+          <div class="flex items-center justify-between mb-2">
+            <span class="font-bold text-xs sm:text-sm text-slate-800">元素符号 (Symbol)</span>
+            <span class="text-[11px] text-slate-500">标准核素表示法</span>
+          </div>
+          <div class="flex items-center justify-center py-2">
+            <div class="w-40 h-40 bg-white border-4 border-slate-800 rounded-xl shadow-md relative flex items-center justify-center">
+              <!-- Mass Number (Top-Left) -->
+              <div class="absolute top-2 left-3 flex flex-col items-start">
+                <span id="sym-mass" class="text-2xl font-black text-slate-800 leading-none">0</span>
+                <span class="text-[9px] text-slate-400 font-bold">质量数</span>
+              </div>
+              <!-- Atomic Number (Bottom-Left) -->
+              <div class="absolute bottom-2 left-3 flex flex-col items-start">
+                <span class="text-[9px] text-slate-400 font-bold">质子数</span>
+                <span id="sym-protons" class="text-2xl font-black text-orange-600 leading-none">0</span>
+              </div>
+              <!-- Net Charge (Top-Right) -->
+              <div class="absolute top-2 right-3 flex flex-col items-end">
+                <span id="sym-charge" class="text-2xl font-black text-sky-600 leading-none">0</span>
+                <span class="text-[9px] text-slate-400 font-bold">净电荷</span>
+              </div>
+              <!-- Element Symbol (Center) -->
+              <div id="sym-symbol" class="text-5xl font-black text-slate-900 tracking-tight">
+                —
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. Show Checkboxes & Reset Control -->
+        <div class="phet-panel p-2.5 flex items-center justify-between gap-2 shrink-0 min-w-[220px] md:min-w-0 mt-auto">
+          <div class="flex flex-col gap-1.5 text-xs sm:text-sm">
+            <div class="font-bold text-slate-700 text-[11px]">显示选项</div>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input id="chk-element" type="checkbox" checked class="accent-sky-600 w-4 h-4 rounded cursor-pointer" />
+              <span class="font-medium text-slate-700">元素名称</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input id="chk-ion" type="checkbox" checked class="accent-sky-600 w-4 h-4 rounded cursor-pointer" />
+              <span class="font-medium text-slate-700">中性 / 离子</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input id="chk-stable" type="checkbox" class="accent-amber-600 w-4 h-4 rounded cursor-pointer" />
+              <span class="font-medium text-slate-700">稳定 / 不稳定</span>
+            </label>
+          </div>
+
+          <!-- Reset Button -->
+          <div class="flex flex-col items-center gap-1">
+            <button onclick="resetAtom()" class="reset-btn w-11 h-11 rounded-full flex items-center justify-center text-white cursor-pointer" title="重置原子">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.8" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+            <span class="text-[10px] font-bold text-slate-500">重置</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ==================== GAME MODE VIEW ==================== -->
+    <div id="game-view" class="hidden flex-1 flex flex-col items-center justify-center p-3 sm:p-6 bg-gradient-to-br from-[#e0f2fe] via-[#f0f9ff] to-[#fef3c7] overflow-y-auto">
+
+      <!-- Level Selection Screen -->
+      <div id="game-menu" class="max-w-3xl w-full flex flex-col items-center">
+        <div class="text-center mb-6">
+          <h1 class="text-2xl sm:text-4xl font-black text-slate-800 tracking-tight mb-1">原子挑战赛</h1>
+          <p class="text-xs sm:text-sm text-slate-600">选择一种挑战模式，每关 5 道题，赢取满星奖励！</p>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
+          <!-- Mode 1 -->
+          <button onclick="startGame(1)" class="phet-panel p-4 hover:border-sky-500 hover:shadow-lg transition text-left flex items-center gap-4 group cursor-pointer">
+            <div class="w-16 h-16 rounded-2xl bg-sky-100 border-2 border-sky-300 flex items-center justify-center text-2xl font-black text-sky-700 group-hover:scale-105 transition shrink-0">
+              周期表
+            </div>
+            <div class="flex-1">
+              <div class="font-black text-base sm:text-lg text-slate-800">第 1 关：寻找元素</div>
+              <div class="text-xs text-slate-500 mt-0.5">根据原子结构模型或粒子数，在周期表中找出对应元素及电荷状态。</div>
+              <div id="stars-level-1" class="flex gap-1 mt-2 text-amber-400 text-base">☆☆☆☆☆</div>
+            </div>
+          </button>
+
+          <!-- Mode 2 -->
+          <button onclick="startGame(2)" class="phet-panel p-4 hover:border-emerald-500 hover:shadow-lg transition text-left flex items-center gap-4 group cursor-pointer">
+            <div class="w-16 h-16 rounded-2xl bg-emerald-100 border-2 border-emerald-300 flex items-center justify-center text-2xl font-black text-emerald-700 group-hover:scale-105 transition shrink-0">
+              质量/电荷
+            </div>
+            <div class="flex-1">
+              <div class="font-black text-base sm:text-lg text-slate-800">第 2 关：计算质量与电荷</div>
+              <div class="text-xs text-slate-500 mt-0.5">根据质子、中子与电子数量，计算原子的质量数或净电荷。</div>
+              <div id="stars-level-2" class="flex gap-1 mt-2 text-amber-400 text-base">☆☆☆☆☆</div>
+            </div>
+          </button>
+
+          <!-- Mode 3 -->
+          <button onclick="startGame(3)" class="phet-panel p-4 hover:border-orange-500 hover:shadow-lg transition text-left flex items-center gap-4 group cursor-pointer">
+            <div class="w-16 h-16 rounded-2xl bg-orange-100 border-2 border-orange-300 flex items-center justify-center text-2xl font-black text-orange-700 group-hover:scale-105 transition shrink-0">
+              符号解码
+            </div>
+            <div class="flex-1">
+              <div class="font-black text-base sm:text-lg text-slate-800">第 3 关：完善元素符号</div>
+              <div class="text-xs text-slate-500 mt-0.5">观察原子模型，补全标准元素符号中的质量数、质子数或净电荷。</div>
+              <div id="stars-level-3" class="flex gap-1 mt-2 text-amber-400 text-base">☆☆☆☆☆</div>
+            </div>
+          </button>
+
+          <!-- Mode 4 -->
+          <button onclick="startGame(4)" class="phet-panel p-4 hover:border-purple-500 hover:shadow-lg transition text-left flex items-center gap-4 group cursor-pointer">
+            <div class="w-16 h-16 rounded-2xl bg-purple-100 border-2 border-purple-300 flex items-center justify-center text-2xl font-black text-purple-700 group-hover:scale-105 transition shrink-0">
+              终极混合
+            </div>
+            <div class="flex-1">
+              <div class="font-black text-base sm:text-lg text-slate-800">第 4 关：建造指定原子</div>
+              <div class="text-xs text-slate-500 mt-0.5">综合挑战！根据元素符号，亲手增减质子、中子和电子建造目标原子。</div>
+              <div id="stars-level-4" class="flex gap-1 mt-2 text-amber-400 text-base">☆☆☆☆☆</div>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Active Quiz Arena -->
+      <div id="game-arena" class="hidden max-w-4xl w-full phet-panel p-4 sm:p-6 flex flex-col gap-4">
+        <!-- Top Quiz Progress Bar -->
+        <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+          <button onclick="exitToGameMenu()" class="px-3 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs sm:text-sm cursor-pointer">
+            ← 返回关卡
+          </button>
+          <div class="flex items-center gap-3">
+            <span id="quiz-level-title" class="font-black text-slate-800 text-sm sm:text-base">第 1 关：寻找元素</span>
+            <span id="quiz-progress-badge" class="bg-sky-100 text-sky-800 font-extrabold text-xs px-2.5 py-0.5 rounded-full">第 1 / 5 题</span>
+          </div>
+          <div class="font-black text-amber-500 text-sm sm:text-base">
+            得分: <span id="quiz-score">0</span> / 10
+          </div>
+        </div>
+
+        <!-- Quiz Content Split -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5 items-center py-2">
+          <!-- Left Visual Prompt -->
+          <div id="quiz-prompt-box" class="bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 flex flex-col items-center justify-center min-h-[230px]">
+            <!-- Populated dynamically by JS -->
+          </div>
+
+          <!-- Right Interactive Answer Area -->
+          <div id="quiz-answer-box" class="flex flex-col items-center justify-center gap-4 min-h-[230px]">
+            <!-- Populated dynamically by JS -->
+          </div>
+        </div>
+
+        <!-- Feedback & Action Footer -->
+        <div class="flex items-center justify-between border-t border-slate-200 pt-3">
+          <div id="quiz-feedback" class="font-bold text-sm sm:text-base min-h-[24px]"></div>
+          <div class="flex gap-2">
+            <button id="btn-check-answer" onclick="checkQuizAnswer()" class="px-5 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-sm shadow cursor-pointer transition">
+              检查答案
+            </button>
+            <button id="btn-next-question" onclick="nextQuizQuestion()" class="hidden px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow cursor-pointer transition">
+              下一题 →
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Level Summary Modal Card -->
+      <div id="game-summary" class="hidden max-w-md w-full phet-panel p-6 text-center flex flex-col items-center gap-4 pop-in">
+        <div class="text-4xl">🏆</div>
+        <h2 class="text-2xl font-black text-slate-800">挑战完成！</h2>
+        <div id="summary-stars" class="text-4xl text-amber-400 tracking-widest">★★★★★</div>
+        <p id="summary-score-text" class="text-slate-600 font-bold text-lg">最终得分: 10 / 10</p>
+        <button onclick="exitToGameMenu()" class="w-full py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-black text-base shadow cursor-pointer transition">
+          继续挑战其他关卡
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ==================== BOTTOM PHET NAVIGATION BAR ==================== -->
+  <footer class="h-12 bg-[#1e293b] text-white flex items-center justify-between px-3 sm:px-6 shrink-0 z-30 shadow-inner">
+    <!-- Left Brand Info -->
+    <div class="flex items-center gap-2 text-xs text-slate-300">
+      <span class="font-black text-amber-400 tracking-wider text-sm">PhET 仿真</span>
+      <span class="hidden sm:inline text-slate-400">| 建造原子 (简体中文版)</span>
+    </div>
+
+    <!-- Center Mode Tabs -->
+    <div class="flex items-center gap-1.5 sm:gap-3 h-full pt-1.5">
+      <button id="tab-atom" onclick="switchMode('atom')" class="nav-tab active h-full px-4 sm:px-6 rounded-t-xl font-bold text-xs sm:text-sm flex items-center gap-1.5 text-slate-300 hover:text-white cursor-pointer">
+        <span class="w-2.5 h-2.5 rounded-full bg-orange-500"></span>
+        <span>原子</span>
+      </button>
+      <button id="tab-symbol" onclick="switchMode('symbol')" class="nav-tab h-full px-4 sm:px-6 rounded-t-xl font-bold text-xs sm:text-sm flex items-center gap-1.5 text-slate-300 hover:text-white cursor-pointer">
+        <span class="w-2.5 h-2.5 rounded-sm bg-sky-400"></span>
+        <span>符号</span>
+      </button>
+      <button id="tab-game" onclick="switchMode('game')" class="nav-tab h-full px-4 sm:px-6 rounded-t-xl font-bold text-xs sm:text-sm flex items-center gap-1.5 text-slate-300 hover:text-white cursor-pointer">
+        <span>😊</span>
+        <span>游戏</span>
+      </button>
+    </div>
+
+    <!-- Right Sound Toggle -->
+    <div class="flex items-center gap-2">
+      <button id="btn-sound" onclick="toggleSound()" class="p-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 transition cursor-pointer" title="开关音效">
+        <svg id="icon-sound-on" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+        </svg>
+        <svg id="icon-sound-off" class="w-5 h-5 hidden text-rose-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15zM17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+        </svg>
+      </button>
+    </div>
+  </footer>
+
+  <script>
+    /* ==========================================================================
+       1. CHEMISTRY & NUCLEAR PHYSICS DATA (Z = 0 to 10 + Periodic Table Layout)
+       ========================================================================== */
+    const ELEMENTS = {
+      0:  { z: 0,  symbol: '—',  name: '无元素', stableNeutrons: [] },
+      1:  { z: 1,  symbol: 'H',  name: '氢',     stableNeutrons: [0, 1] },       // 1H, 2H (Deuterium)
+      2:  { z: 2,  symbol: 'He', name: '氦',     stableNeutrons: [1, 2] },       // 3He, 4He
+      3:  { z: 3,  symbol: 'Li', name: '锂',     stableNeutrons: [3, 4] },       // 6Li, 7Li
+      4:  { z: 4,  symbol: 'Be', name: '铍',     stableNeutrons: [5] },          // 9Be
+      5:  { z: 5,  symbol: 'B',  name: '硼',     stableNeutrons: [5, 6] },       // 10B, 11B
+      6:  { z: 6,  symbol: 'C',  name: '碳',     stableNeutrons: [6, 7] },       // 12C, 13C
+      7:  { z: 7,  symbol: 'N',  name: '氮',     stableNeutrons: [7, 8] },       // 14N, 15N
+      8:  { z: 8,  symbol: 'O',  name: '氧',     stableNeutrons: [8, 9, 10] },   // 16O, 17O, 18O
+      9:  { z: 9,  symbol: 'F',  name: '氟',     stableNeutrons: [10] },         // 19F
+      10: { z: 10, symbol: 'Ne', name: '氖',     stableNeutrons: [10, 11, 12] }  // 20Ne, 21Ne, 22Ne
+    };
+
+    const MAX_PROTONS = 10;
+    const MAX_NEUTRONS = 13;
+    const MAX_ELECTRONS = 10; // Inner shell: 2, Outer shell: 8
+
+    // Full 7-period 18-column Periodic Table map (row 0..6, col 0..17 -> atomic number)
+    const PT_LAYOUT = [
+      { z: 1, r: 0, c: 0, sym: 'H' },  { z: 2, r: 0, c: 17, sym: 'He' },
+      { z: 3, r: 1, c: 0, sym: 'Li' }, { z: 4, r: 1, c: 1, sym: 'Be' },
+      { z: 5, r: 1, c: 12, sym: 'B' }, { z: 6, r: 1, c: 13, sym: 'C' }, { z: 7, r: 1, c: 14, sym: 'N' }, { z: 8, r: 1, c: 15, sym: 'O' }, { z: 9, r: 1, c: 16, sym: 'F' }, { z: 10, r: 1, c: 17, sym: 'Ne' },
+      // Row 3 (Na - Ar)
+      { z: 11, r: 2, c: 0, sym: 'Na' }, { z: 12, r: 2, c: 1, sym: 'Mg' },
+      { z: 13, r: 2, c: 12, sym: 'Al' }, { z: 14, r: 2, c: 13, sym: 'Si' }, { z: 15, r: 2, c: 14, sym: 'P' }, { z: 16, r: 2, c: 15, sym: 'S' }, { z: 17, r: 2, c: 16, sym: 'Cl' }, { z: 18, r: 2, c: 17, sym: 'Ar' },
+      // Row 4 (K - Kr)
+      ...Array.from({ length: 18 }, (_, i) => ({ z: 19 + i, r: 3, c: i, sym: '' })),
+      // Row 5 (Rb - Xe)
+      ...Array.from({ length: 18 }, (_, i) => ({ z: 37 + i, r: 4, c: i, sym: '' })),
+      // Row 6 (Cs - Rn)
+      ...Array.from({ length: 18 }, (_, i) => ({ z: 55 + i, r: 5, c: i, sym: '' })),
+      // Row 7 (Fr - Og)
+      ...Array.from({ length: 18 }, (_, i) => ({ z: 87 + i, r: 6, c: i, sym: '' }))
+    ];
+
+    /* ==========================================================================
+       2. APPLICATION STATE & WEB AUDIO SOUND SYNTHESIZER
+       ========================================================================== */
+    const state = {
+      mode: 'atom',          // 'atom' | 'symbol' | 'game'
+      modelView: 'orbits',   // 'orbits' | 'cloud'
+      protons: 0,
+      neutrons: 0,
+      electrons: 0,
+      showElement: true,
+      showIon: true,
+      showStable: false,
+      soundEnabled: true,
+      // Visual particle objects for smooth nucleus clustering & orbital slots
+      nucleons: [],          // { type: 'proton'|'neutron', offsetX, offsetY, angle, radius, phase }
+      electronSlots: new Array(10).fill(false), // 0..1 inner shell, 2..9 outer shell
+      nucleusJiggle: 0,
+      // Dragging state
+      dragging: null,        // { type: 'proton'|'neutron'|'electron', fromAtom: boolean, slotIndex?: number }
+      pointerX: 0,
+      pointerY: 0,
+      // Game state
+      gameStars: { 1: 0, 2: 0, 3: 0, 4: 0 },
+      quiz: null
+    };
+
+    // Web Audio API Synthesizer (No external URLs needed)
+    let audioCtx = null;
+    function playTone(type) {
+      if (!state.soundEnabled) return;
+      try {
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        const now = audioCtx.currentTime;
+        if (type === 'add') {
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(360, now);
+          osc.frequency.exponentialRampToValueAtTime(620, now + 0.09);
+          gain.gain.setValueAtTime(0.14, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+          osc.start(now);
+          osc.stop(now + 0.11);
+        } else if (type === 'remove') {
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(480, now);
+          osc.frequency.exponentialRampToValueAtTime(240, now + 0.09);
+          gain.gain.setValueAtTime(0.12, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+          osc.start(now);
+          osc.stop(now + 0.11);
+        } else if (type === 'correct') {
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(523.25, now); // C5
+          osc.frequency.setValueAtTime(659.25, now + 0.09); // E5
+          osc.frequency.setValueAtTime(783.99, now + 0.18); // G5
+          gain.gain.setValueAtTime(0.18, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+          osc.start(now);
+          osc.stop(now + 0.42);
+        } else if (type === 'wrong') {
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(190, now);
+          osc.frequency.linearRampToValueAtTime(140, now + 0.22);
+          gain.gain.setValueAtTime(0.12, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+          osc.start(now);
+          osc.stop(now + 0.26);
+        }
+      } catch (e) {
+        // Ignore audio errors if blocked by browser policy
+      }
+    }
+
+    function toggleSound() {
+      state.soundEnabled = !state.soundEnabled;
+      document.getElementById('icon-sound-on').classList.toggle('hidden', !state.soundEnabled);
+      document.getElementById('icon-sound-off').classList.toggle('hidden', state.soundEnabled);
+    }
+
+    /* ==========================================================================
+       3. NUCLEUS PACKING & ELECTRON ORBITAL LOGIC
+       ========================================================================== */
+    function rebuildNucleusLayout() {
+      // Interleave protons and neutrons so they mix naturally in the nucleus
+      const list = [];
+      let p = state.protons;
+      let n = state.neutrons;
+      while (p > 0 || n > 0) {
+        if (p > 0) { list.push('proton'); p--; }
+        if (n > 0) { list.push('neutron'); n--; }
+      }
+
+      // Arrange nucleons in compact concentric golden-angle rings
+      const total = list.length;
+      state.nucleons = list.map((type, idx) => {
+        if (idx === 0) {
+          return { type, x: 0, y: 0, phase: Math.random() * Math.PI * 2 };
+        }
+        // Golden angle spiral packing for realistic tight spherical cluster
+        const goldenAngle = 2.39996323;
+        const r = Math.sqrt(idx) * 8.2;
+        const theta = idx * goldenAngle;
+        return {
+          type,
+          x: Math.cos(theta) * r,
+          y: Math.sin(theta) * r,
+          phase: Math.random() * Math.PI * 2
+        };
+      });
+      state.nucleusJiggle = 1.0;
+    }
+
+    function addElectronToSlot(preferredAngle = null) {
+      if (state.electrons >= MAX_ELECTRONS) return false;
+      // Inner shell (indices 0, 1) fills first unless full, then outer shell (2..9)
+      let targetIdx = -1;
+      if (!state.electronSlots[0]) targetIdx = 0;
+      else if (!state.electronSlots[1]) targetIdx = 1;
+      else {
+        // Find closest empty slot in outer shell (2..9) if preferredAngle provided
+        const outerIndices = [2, 3, 4, 5, 6, 7, 8, 9];
+        const available = outerIndices.filter(i => !state.electronSlots[i]);
+        if (available.length > 0) {
+          if (preferredAngle !== null) {
+            let bestDist = Infinity;
+            available.forEach(idx => {
+              const slotAngle = ((idx - 2) / 8) * Math.PI * 2 - Math.PI / 2;
+              const diff = Math.abs(Math.atan2(Math.sin(preferredAngle - slotAngle), Math.cos(preferredAngle - slotAngle)));
+              if (diff < bestDist) {
+                bestDist = diff;
+                targetIdx = idx;
+              }
+            });
+          } else {
+            targetIdx = available[0];
+          }
+        }
+      }
+      if (targetIdx !== -1) {
+        state.electronSlots[targetIdx] = true;
+        state.electrons++;
+        return true;
+      }
+      return false;
+    }
+
+    function removeElectronFromSlot(specificSlot = null) {
+      if (state.electrons <= 0) return false;
+      if (specificSlot !== null && state.electronSlots[specificSlot]) {
+        state.electronSlots[specificSlot] = false;
+        state.electrons--;
+        return true;
+      }
+      // Remove from outer shell first, then inner shell
+      for (let i = 9; i >= 0; i--) {
+        if (state.electronSlots[i]) {
+          state.electronSlots[i] = false;
+          state.electrons--;
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function isNucleusStable() {
+      if (state.protons === 0) return true;
+      const el = ELEMENTS[state.protons];
+      if (!el) return false;
+      return el.stableNeutrons.includes(state.neutrons);
+    }
+
+    function adjustParticle(type, delta) {
+      if (delta > 0) {
+        if (type === 'proton' && state.protons < MAX_PROTONS) {
+          state.protons++;
+          rebuildNucleusLayout();
+          playTone('add');
+        } else if (type === 'neutron' && state.neutrons < MAX_NEUTRONS) {
+          state.neutrons++;
+          rebuildNucleusLayout();
+          playTone('add');
+        } else if (type === 'electron' && state.electrons < MAX_ELECTRONS) {
+          addElectronToSlot();
+          playTone('add');
+        }
+      } else if (delta < 0) {
+        if (type === 'proton' && state.protons > 0) {
+          state.protons--;
+          rebuildNucleusLayout();
+          playTone('remove');
+        } else if (type === 'neutron' && state.neutrons > 0) {
+          state.neutrons--;
+          rebuildNucleusLayout();
+          playTone('remove');
+        } else if (type === 'electron' && state.electrons > 0) {
+          removeElectronFromSlot();
+          playTone('remove');
+        }
+      }
+      updateUI();
+    }
+
+    function resetAtom() {
+      state.protons = 0;
+      state.neutrons = 0;
+      state.electrons = 0;
+      state.nucleons = [];
+      state.electronSlots.fill(false);
+      playTone('remove');
+      updateUI();
+    }
+
+    /* ==========================================================================
+       4. UI & PANEL SYNCHRONIZATION
+       ========================================================================== */
+    function initPeriodicTable() {
+      const grid = document.getElementById('periodic-table-grid');
+      grid.innerHTML = '';
+      // 7 rows x 18 cols = 126 cells
+      const cellMap = {};
+      PT_LAYOUT.forEach(item => {
+        cellMap[`${item.r}-${item.c}`] = item;
+      });
+
+      for (let r = 0; r < 7; r++) {
+        for (let c = 0; c < 18; c++) {
+          const div = document.createElement('div');
+          const item = cellMap[`${r}-${c}`];
+          if (item) {
+            div.id = `pt-cell-${item.z}`;
+            div.className = 'pt-cell border border-slate-300 text-[8px] sm:text-[9px] leading-none ' +
+              (item.z <= 10 ? 'bg-white text-slate-700' : 'bg-slate-200/70 text-slate-400');
+            div.textContent = item.sym;
+            div.title = item.z <= 10 ? `${item.z}号 ${ELEMENTS[item.z].name} (${item.sym})` : `原子序数 ${item.z}`;
+          } else {
+            div.className = 'aspect-square';
+          }
+          grid.appendChild(div);
+        }
+      }
+    }
+
+    function renderBucketParticles() {
+      const pContainer = document.getElementById('bucket-proton-particles');
+      const nContainer = document.getElementById('bucket-neutron-particles');
+      const eContainer = document.getElementById('bucket-electron-particles');
+
+      const remP = MAX_PROTONS - state.protons;
+      const remN = MAX_NEUTRONS - state.neutrons;
+      const remE = MAX_ELECTRONS - state.electrons;
+
+      const drawPile = (container, count, cls, label) => {
+        container.innerHTML = '';
+        for (let i = 0; i < count; i++) {
+          const dot = document.createElement('div');
+          const row = Math.floor(i / 5);
+          const col = i % 5;
+          const left = 16 + col * 15 + (row % 2) * 5;
+          const top = 10 + row * 12;
+          dot.className = `w-5 h-5 sm:w-6 sm:h-6 rounded-full ${cls} absolute flex items-center justify-center text-white font-black text-[10px]`;
+          dot.style.left = `${left}%`;
+          dot.style.top = `${top}px`;
+          dot.textContent = label;
+          container.appendChild(dot);
+        }
+      };
+
+      drawPile(pContainer, remP, 'particle-proton', '+');
+      drawPile(nContainer, remN, 'particle-neutron', '');
+      drawPile(eContainer, remE, 'particle-electron', '−');
+    }
+
+    function updateUI() {
+      // Top counters
+      document.getElementById('stat-protons').textContent = state.protons;
+      document.getElementById('stat-neutrons').textContent = state.neutrons;
+      document.getElementById('stat-electrons').textContent = state.electrons;
+
+      renderBucketParticles();
+
+      const el = ELEMENTS[state.protons];
+      const netCharge = state.protons - state.electrons;
+      const massNumber = state.protons + state.neutrons;
+      const stable = isNucleusStable();
+
+      // Center Overlay Badges
+      const elNameLabel = document.getElementById('label-element-name');
+      const ionLabel = document.getElementById('label-ion-status');
+      const stableLabel = document.getElementById('label-stability-status');
+
+      if (state.showElement && state.protons > 0) {
+        elNameLabel.textContent = el.name;
+        elNameLabel.classList.remove('hidden');
+      } else {
+        elNameLabel.classList.add('hidden');
+      }
+
+      if (state.showIon && state.protons > 0) {
+        ionLabel.classList.remove('hidden');
+        if (netCharge === 0) {
+          ionLabel.textContent = '中性原子';
+          ionLabel.className = 'text-xs sm:text-sm font-extrabold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-300 shadow-sm';
+        } else if (netCharge > 0) {
+          ionLabel.textContent = '+ 正离子';
+          ionLabel.className = 'text-xs sm:text-sm font-extrabold px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-300 shadow-sm';
+        } else {
+          ionLabel.textContent = '− 负离子';
+          ionLabel.className = 'text-xs sm:text-sm font-extrabold px-2.5 py-0.5 rounded-full bg-sky-100 text-sky-700 border border-sky-300 shadow-sm';
+        }
+      } else {
+        ionLabel.classList.add('hidden');
+      }
+
+      if (state.showStable && state.protons > 0) {
+        stableLabel.classList.remove('hidden');
+        if (stable) {
+          stableLabel.textContent = '稳定';
+          stableLabel.className = 'text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-sm';
+        } else {
+          stableLabel.textContent = '不稳定';
+          stableLabel.className = 'text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-400 shadow-sm animate-bounce';
+        }
+      } else {
+        stableLabel.classList.add('hidden');
+      }
+
+      // Periodic Table Highlight
+      for (let z = 1; z <= 10; z++) {
+        const cell = document.getElementById(`pt-cell-${z}`);
+        if (!cell) continue;
+        if (z === state.protons) {
+          cell.className = 'pt-cell border border-orange-600 bg-orange-500 text-white scale-125 z-10 shadow font-black text-[9px]';
+        } else {
+          cell.className = 'pt-cell border border-slate-300 bg-white text-slate-700 text-[8px] sm:text-[9px] leading-none';
+        }
+      }
+      const ptBadge = document.getElementById('pt-current-badge');
+      if (state.protons > 0) {
+        ptBadge.textContent = `${el.symbol} - ${el.name}`;
+        ptBadge.classList.remove('hidden');
+      } else {
+        ptBadge.classList.add('hidden');
+      }
+
+      // Net Charge Meter & Readout
+      const chargeStr = netCharge > 0 ? `+${netCharge}` : `${netCharge}`;
+      const chargeBox = document.getElementById('net-charge-value');
+      chargeBox.textContent = chargeStr;
+      chargeBox.className = 'w-12 h-12 rounded-xl border-2 flex items-center justify-center font-black text-xl shrink-0 ' +
+        (netCharge > 0 ? 'border-rose-400 bg-rose-50 text-rose-600' :
+         netCharge < 0 ? 'border-sky-400 bg-sky-50 text-sky-600' :
+         'border-slate-300 bg-slate-50 text-slate-700');
+
+      const meterFill = document.getElementById('charge-meter-fill');
+      const pct = Math.min(Math.abs(netCharge) / 10, 1) * 50;
+      if (netCharge > 0) {
+        meterFill.style.left = `${50 - pct}%`;
+        meterFill.style.width = `${pct}%`;
+        meterFill.className = 'h-full bg-rose-500 transition-all duration-200 absolute top-0';
+      } else if (netCharge < 0) {
+        meterFill.style.left = '50%';
+        meterFill.style.width = `${pct}%`;
+        meterFill.className = 'h-full bg-sky-500 transition-all duration-200 absolute top-0';
+      } else {
+        meterFill.style.left = '50%';
+        meterFill.style.width = '0%';
+      }
+
+      // Paired +/- visual blocks
+      const pairsBox = document.getElementById('charge-pairs-box');
+      const maxCount = Math.max(state.protons, state.electrons);
+      if (maxCount === 0) {
+        pairsBox.innerHTML = '<span class="text-[10px] text-slate-400">无电荷粒子</span>';
+      } else {
+        let html = '';
+        for (let i = 0; i < maxCount; i++) {
+          const hasP = i < state.protons;
+          const hasE = i < state.electrons;
+          html += `<div class="flex flex-col items-center leading-none">
+            <span class="w-3 h-3 rounded-[2px] text-[9px] font-black flex items-center justify-center ${hasP ? 'bg-rose-500 text-white' : 'bg-transparent text-transparent'}">+</span>
+            <span class="w-3 h-3 rounded-[2px] text-[9px] font-black flex items-center justify-center mt-[1px] ${hasE ? 'bg-sky-500 text-white' : 'bg-transparent text-transparent'}">−</span>
+          </div>`;
+        }
+        pairsBox.innerHTML = html;
+      }
+
+      // Mass Number Readout
+      document.getElementById('mass-number-value').textContent = massNumber;
+      document.getElementById('mass-breakdown').textContent = `${state.protons} + ${state.neutrons}`;
+      document.getElementById('mass-bar-fill').style.width = `${Math.min((massNumber / 23) * 100, 100)}%`;
+
+      // Symbol Mode Card Readout
+      document.getElementById('sym-mass').textContent = massNumber;
+      document.getElementById('sym-protons').textContent = state.protons;
+      document.getElementById('sym-charge').textContent = chargeStr;
+      document.getElementById('sym-symbol').textContent = el.symbol;
+    }
+
+    function togglePanel(bodyId, btn) {
+      const el = document.getElementById(bodyId);
+      const isHidden = el.classList.toggle('hidden');
+      btn.textContent = isHidden ? '+' : '−';
+    }
+
+    function switchMode(newMode) {
+      state.mode = newMode;
+      ['atom', 'symbol', 'game'].forEach(m => {
+        document.getElementById(`tab-${m}`).classList.toggle('active', m === newMode);
+      });
+
+      const labView = document.getElementById('lab-view');
+      const gameView = document.getElementById('game-view');
+
+      if (newMode === 'game') {
+        labView.classList.add('hidden');
+        gameView.classList.remove('hidden');
+        exitToGameMenu();
+      } else {
+        gameView.classList.add('hidden');
+        labView.classList.remove('hidden');
+        document.getElementById('atom-mode-panels').classList.toggle('hidden', newMode !== 'atom');
+        document.getElementById('symbol-mode-panel').classList.toggle('hidden', newMode !== 'symbol');
+        resizeCanvas();
+      }
+      updateUI();
+    }
+
+    /* ==========================================================================
+       5. HTML5 CANVAS ATOM RENDERING & DRAG-AND-DROP INTERACTION
+       ========================================================================== */
+    const canvas = document.getElementById('atom-canvas');
+    const ctx = canvas.getContext('2d');
+    let canvasMetrics = { cx: 0, cy: 0, innerR: 75, outerR: 135, dpr: 1 };
+
+    function resizeCanvas() {
+      const wrapper = document.getElementById('canvas-wrapper');
+      if (!wrapper || wrapper.clientWidth === 0) return;
+      const dpr = window.devicePixelRatio || 1;
+      const w = wrapper.clientWidth;
+      const h = wrapper.clientHeight;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+
+      const minDim = Math.min(w, h);
+      canvasMetrics = {
+        cx: w / 2,
+        cy: h / 2,
+        innerR: Math.max(54, minDim * 0.22),
+        outerR: Math.max(96, minDim * 0.39),
+        dpr
+      };
+    }
+
+    function getElectronScreenPos(slotIdx) {
+      const { cx, cy, innerR, outerR } = canvasMetrics;
+      if (slotIdx < 2) {
+        // Inner shell: top (-PI/2) and bottom (+PI/2)
+        const angle = slotIdx === 0 ? -Math.PI / 2 : Math.PI / 2;
+        return {
+          x: cx + Math.cos(angle) * innerR,
+          y: cy + Math.sin(angle) * innerR,
+          angle
+        };
+      } else {
+        // Outer shell: 8 evenly spaced slots starting at top
+        const angle = ((slotIdx - 2) / 8) * Math.PI * 2 - Math.PI / 2;
+        return {
+          x: cx + Math.cos(angle) * outerR,
+          y: cy + Math.sin(angle) * outerR,
+          angle
+        };
+      }
+    }
+
+    function drawSphere(x, y, radius, type) {
+      ctx.save();
+      const grad = ctx.createRadialGradient(
+        x - radius * 0.32, y - radius * 0.32, radius * 0.1,
+        x, y, radius
+      );
+      if (type === 'proton') {
+        grad.addColorStop(0, '#ff9e80');
+        grad.addColorStop(0.65, '#e64a19');
+        grad.addColorStop(1, '#871c00');
+      } else if (type === 'neutron') {
+        grad.addColorStop(0, '#e2e8f0');
+        grad.addColorStop(0.65, '#64748b');
+        grad.addColorStop(1, '#1e293b');
+      } else {
+        grad.addColorStop(0, '#bae6fd');
+        grad.addColorStop(0.65, '#0284c7');
+        grad.addColorStop(1, '#082f49');
+      }
+
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = grad;
+      ctx.shadowColor = 'rgba(15, 23, 42, 0.28)';
+      ctx.shadowBlur = 5;
+      ctx.shadowOffsetY = 2;
+      ctx.fill();
+
+      // Symbol inside particle
+      ctx.shadowColor = 'transparent';
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `900 ${Math.round(radius * 1.15)}px "Noto Sans SC", sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      if (type === 'proton') ctx.fillText('+', x, y + 0.5);
+      if (type === 'electron') ctx.fillText('−', x, y + 0.5);
+
+      ctx.restore();
+    }
+
+    function renderAtomCanvas(timestamp) {
+      if (state.mode !== 'game') {
+        const { cx, cy, innerR, outerR, dpr } = canvasMetrics;
+        ctx.save();
+        ctx.scale(dpr, dpr);
+        ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+
+        // Highlight drop target ring when user is dragging a particle
+        if (state.dragging) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(cx, cy, outerR + 22, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(14, 165, 233, 0.06)';
+          ctx.fill();
+          ctx.setLineDash([8, 6]);
+          ctx.strokeStyle = 'rgba(14, 165, 233, 0.45)';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // 1. Render Electron Shells OR Electron Cloud
+        if (state.modelView === 'orbits') {
+          ctx.save();
+          ctx.setLineDash([7, 6]);
+          ctx.strokeStyle = '#64748b';
+          ctx.lineWidth = 1.8;
+
+          // Inner ring
+          ctx.beginPath();
+          ctx.arc(cx, cy, innerR, 0, Math.PI * 2);
+          ctx.stroke();
+
+          // Outer ring
+          ctx.beginPath();
+          ctx.arc(cx, cy, outerR, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+
+          // Draw Electrons in occupied orbital slots
+          for (let i = 0; i < 10; i++) {
+            if (state.electronSlots[i]) {
+              const pos = getElectronScreenPos(i);
+              drawSphere(pos.x, pos.y, 10, 'electron');
+            }
+          }
+        } else {
+          // Electron Probability Cloud mode
+          if (state.electrons > 0) {
+            const cloudRadius = state.electrons <= 2 ? innerR * 1.35 : outerR * 1.25;
+            const alpha = Math.min(0.18 + state.electrons * 0.055, 0.72);
+            const cloudGrad = ctx.createRadialGradient(cx, cy, 8, cx, cy, cloudRadius);
+            cloudGrad.addColorStop(0, `rgba(2, 132, 199, ${alpha})`);
+            cloudGrad.addColorStop(0.55, `rgba(14, 165, 233, ${alpha * 0.55})`);
+            cloudGrad.addColorStop(1, 'rgba(56, 189, 248, 0)');
+
+            ctx.beginPath();
+            ctx.arc(cx, cy, cloudRadius, 0, Math.PI * 2);
+            ctx.fillStyle = cloudGrad;
+            ctx.fill();
+          }
+        }
+
+        // 2. Render Center Crosshair when Nucleus is empty
+        if (state.nucleons.length === 0) {
+          ctx.save();
+          ctx.strokeStyle = '#94a3b8';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(cx - 10, cy - 10);
+          ctx.lineTo(cx + 10, cy + 10);
+          ctx.moveTo(cx + 10, cy - 10);
+          ctx.lineTo(cx - 10, cy + 10);
+          ctx.stroke();
+          ctx.restore();
+        } else {
+          // 3. Render Nucleus Cluster (with unstable vibration physics!)
+          const unstable = state.showStable && !isNucleusStable() && state.protons > 0;
+          const t = timestamp * 0.025;
+
+          // Decay entry jiggle smoothly
+          if (state.nucleusJiggle > 0.01) {
+            state.nucleusJiggle *= 0.9;
+          } else {
+            state.nucleusJiggle = 0;
+          }
+
+          // Sort back-to-front slightly for 3D overlap feel
+          const sorted = [...state.nucleons].sort((a, b) => a.y - b.y);
+          sorted.forEach(nuc => {
+            let vibX = 0;
+            let vibY = 0;
+            if (unstable) {
+              vibX = Math.sin(t * 1.9 + nuc.phase) * 3.4;
+              vibY = Math.cos(t * 2.2 + nuc.phase) * 3.4;
+            } else if (state.nucleusJiggle > 0) {
+              vibX = Math.sin(t * 2.5 + nuc.phase) * 4 * state.nucleusJiggle;
+              vibY = Math.cos(t * 2.5 + nuc.phase) * 4 * state.nucleusJiggle;
+            }
+            drawSphere(cx + nuc.x + vibX, cy + nuc.y + vibY, 12.5, nuc.type);
+          });
+        }
+
+        ctx.restore();
+      }
+      requestAnimationFrame(renderAtomCanvas);
+    }
+
+    /* ==========================================================================
+       6. UNIFIED POINTER DRAG-AND-DROP (MOUSE & TOUCH)
+       ========================================================================== */
+    const dragGhost = document.getElementById('drag-ghost');
+
+    function startDrag(type, fromAtom, clientX, clientY, slotIndex = null) {
+      // Check availability
+      if (!fromAtom) {
+        if (type === 'proton' && state.protons >= MAX_PROTONS) return;
+        if (type === 'neutron' && state.neutrons >= MAX_NEUTRONS) return;
+        if (type === 'electron' && state.electrons >= MAX_ELECTRONS) return;
+      }
+
+      state.dragging = { type, fromAtom, slotIndex };
+
+      // Configure ghost appearance
+      dragGhost.className = 'w-9 h-9 rounded-full flex items-center justify-center text-white font-black text-base ' +
+        (type === 'proton' ? 'particle-proton' : type === 'neutron' ? 'particle-neutron' : 'particle-electron');
+      dragGhost.textContent = type === 'proton' ? '+' : type === 'electron' ? '−' : '';
+      dragGhost.style.left = `${clientX}px`;
+      dragGhost.style.top = `${clientY}px`;
+      dragGhost.style.display = 'flex';
+    }
+
+    // Attach startDrag to Bucket Trays
+    ['proton', 'neutron', 'electron'].forEach(type => {
+      const bucket = document.getElementById(`bucket-${type}`);
+      bucket.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        startDrag(type, false, e.clientX, e.clientY);
+      });
+    });
+
+    // Attach startDrag to Canvas Particles (picking up from Atom to remove)
+    canvas.addEventListener('pointerdown', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const px = e.clientX - rect.left;
+      const py = e.clientY - rect.top;
+      const { cx, cy, outerR } = canvasMetrics;
+
+      // 1. Check if user clicked an Electron in Orbits view
+      if (state.modelView === 'orbits') {
+        for (let i = 9; i >= 0; i--) {
+          if (state.electronSlots[i]) {
+            const pos = getElectronScreenPos(i);
+            if (Math.hypot(px - pos.x, py - pos.y) <= 20) {
+              removeElectronFromSlot(i);
+              playTone('remove');
+              updateUI();
+              startDrag('electron', true, e.clientX, e.clientY, i);
+              return;
+            }
+          }
+        }
+      } else if (state.electrons > 0) {
+        // In Electron Cloud mode, clicking inside cloud ring (outside nucleus) grabs an electron
+        const distFromCenter = Math.hypot(px - cx, py - cy);
+        if (distFromCenter > 28 && distFromCenter <= outerR + 18) {
+          removeElectronFromSlot();
+          playTone('remove');
+          updateUI();
+          startDrag('electron', true, e.clientX, e.clientY);
+          return;
+        }
+      }
+
+      // 2. Check if user clicked a Proton or Neutron in Nucleus
+      if (state.nucleons.length > 0) {
+        for (let i = state.nucleons.length - 1; i >= 0; i--) {
+          const nuc = state.nucleons[i];
+          if (Math.hypot(px - (cx + nuc.x), py - (cy + nuc.y)) <= 22) {
+            const type = nuc.type;
+            if (type === 'proton') state.protons--;
+            else state.neutrons--;
+            rebuildNucleusLayout();
+            playTone('remove');
+            updateUI();
+            startDrag(type, true, e.clientX, e.clientY);
+            return;
+          }
+        }
+      }
+    });
+
+    window.addEventListener('pointermove', (e) => {
+      if (!state.dragging) return;
+      dragGhost.style.left = `${e.clientX}px`;
+      dragGhost.style.top = `${e.clientY}px`;
+    });
+
+    window.addEventListener('pointerup', (e) => {
+      if (!state.dragging) return;
+      const { type } = state.dragging;
+      dragGhost.style.display = 'none';
+      state.dragging = null;
+
+      // Determine if dropped inside Atom drop zone
+      const rect = canvas.getBoundingClientRect();
+      const px = e.clientX - rect.left;
+      const py = e.clientY - rect.top;
+      const { cx, cy, outerR } = canvasMetrics;
+      const dist = Math.hypot(px - cx, py - cy);
+
+      if (px >= 0 && px <= rect.width && py >= 0 && py <= rect.height && dist <= outerR + 48) {
+        if (type === 'proton' && state.protons < MAX_PROTONS) {
+          state.protons++;
+          rebuildNucleusLayout();
+          playTone('add');
+        } else if (type === 'neutron' && state.neutrons < MAX_NEUTRONS) {
+          state.neutrons++;
+          rebuildNucleusLayout();
+          playTone('add');
+        } else if (type === 'electron' && state.electrons < MAX_ELECTRONS) {
+          const angle = Math.atan2(py - cy, px - cx);
+          addElectronToSlot(angle);
+          playTone('add');
+        }
+        updateUI();
+      }
+    });
+
+    /* ==========================================================================
+       7. CHECKBOXES & RADIO LISTENERS
+       ========================================================================== */
+    document.querySelectorAll('input[name="model-type"]').forEach(radio => {
+      radio.addEventListener('change', (e) => {
+        state.modelView = e.target.value;
+      });
+    });
+
+    document.getElementById('chk-element').addEventListener('change', (e) => {
+      state.showElement = e.target.checked;
+      updateUI();
+    });
+    document.getElementById('chk-ion').addEventListener('change', (e) => {
+      state.showIon = e.target.checked;
+      updateUI();
+    });
+    document.getElementById('chk-stable').addEventListener('change', (e) => {
+      state.showStable = e.target.checked;
+      updateUI();
+    });
+
+    /* ==========================================================================
+       8. INTERACTIVE GAME MODE (4 LEVELS x 5 QUESTIONS)
+       ========================================================================== */
+    function generateQuestion(level) {
+      const z = Math.floor(Math.random() * 10) + 1;
+      const el = ELEMENTS[z];
+      const baseN = el.stableNeutrons[0];
+      const n = Math.max(0, baseN + (Math.floor(Math.random() * 3) - 1));
+      const chargeOffset = Math.floor(Math.random() * 5) - 2; // -2 to +2
+      const e = Math.max(0, Math.min(10, z - chargeOffset));
+      const actualCharge = z - e;
+      const mass = z + n;
+
+      if (level === 1) {
+        return {
+          level: 1,
+          z, n, e, mass, charge: actualCharge,
+          selectedZ: null,
+          selectedIon: null,
+          answered: false
+        };
+      } else if (level === 2) {
+        const askMass = Math.random() < 0.5;
+        return {
+          level: 2,
+          z, n, e, mass, charge: actualCharge,
+          askMass, // true = ask mass number, false = ask net charge
+          userVal: 0,
+          answered: false
+        };
+      } else if (level === 3) {
+        const fields = ['mass', 'protons', 'charge'];
+        const missingField = fields[Math.floor(Math.random() * fields.length)];
+        return {
+          level: 3,
+          z, n, e, mass, charge: actualCharge,
+          missingField,
+          userVal: 0,
+          answered: false
+        };
+      } else {
+        // Level 4: Build the target atom from symbol
+        return {
+          level: 4,
+          targetZ: z, targetN: n, targetE: e, mass, charge: actualCharge,
+          curP: 0, curN: 0, curE: 0,
+          answered: false
+        };
+      }
+    }
+
+    function startGame(level) {
+      const titles = {
+        1: '第 1 关：寻找元素',
+        2: '第 2 关：计算质量与电荷',
+        3: '第 3 关：完善元素符号',
+        4: '第 4 关：建造指定原子'
+      };
+      state.quiz = {
+        level,
+        title: titles[level],
+        qIndex: 0,
+        score: 0,
+        currentQ: generateQuestion(level)
+      };
+
+      document.getElementById('game-menu').classList.add('hidden');
+      document.getElementById('game-summary').classList.add('hidden');
+      document.getElementById('game-arena').classList.remove('hidden');
+      renderQuizQuestion();
+    }
+
+    function exitToGameMenu() {
+      document.getElementById('game-arena').classList.add('hidden');
+      document.getElementById('game-summary').classList.add('hidden');
+      document.getElementById('game-menu').classList.remove('hidden');
+
+      // Update stars display
+      for (let lvl = 1; lvl <= 4; lvl++) {
+        const s = state.gameStars[lvl];
+        document.getElementById(`stars-level-${lvl}`).textContent = '★'.repeat(s) + '☆'.repeat(5 - s);
+      }
+    }
+
+    function renderMiniAtomHTML(p, n, e) {
+      return `
+        <div class="flex flex-col items-center gap-3 w-full">
+          <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">目标原子粒子组成</div>
+          <div class="grid grid-cols-3 gap-2.5 w-full max-w-xs">
+            <div class="bg-white border-2 border-orange-200 rounded-xl p-2.5 flex flex-col items-center shadow-sm">
+              <span class="w-6 h-6 rounded-full particle-proton flex items-center justify-center text-white font-black text-xs mb-1">+</span>
+              <span class="text-xs text-slate-500 font-bold">质子</span>
+              <span class="text-2xl font-black text-orange-600">${p}</span>
+            </div>
+            <div class="bg-white border-2 border-slate-200 rounded-xl p-2.5 flex flex-col items-center shadow-sm">
+              <span class="w-6 h-6 rounded-full particle-neutron flex items-center justify-center text-white font-black text-xs mb-1"></span>
+              <span class="text-xs text-slate-500 font-bold">中子</span>
+              <span class="text-2xl font-black text-slate-700">${n}</span>
+            </div>
+            <div class="bg-white border-2 border-sky-200 rounded-xl p-2.5 flex flex-col items-center shadow-sm">
+              <span class="w-6 h-6 rounded-full particle-electron flex items-center justify-center text-white font-black text-xs mb-1">−</span>
+              <span class="text-xs text-slate-500 font-bold">电子</span>
+              <span class="text-2xl font-black text-sky-600">${e}</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderQuizQuestion() {
+      const qz = state.quiz;
+      const q = qz.currentQ;
+
+      document.getElementById('quiz-level-title').textContent = qz.title;
+      document.getElementById('quiz-progress-badge').textContent = `第 ${qz.qIndex + 1} / 5 题`;
+      document.getElementById('quiz-score').textContent = qz.score;
+      document.getElementById('quiz-feedback').textContent = '';
+      document.getElementById('btn-check-answer').classList.remove('hidden');
+      document.getElementById('btn-next-question').classList.add('hidden');
+
+      const promptBox = document.getElementById('quiz-prompt-box');
+      const answerBox = document.getElementById('quiz-answer-box');
+
+      if (q.level === 1) {
+        promptBox.innerHTML = renderMiniAtomHTML(q.z, q.n, q.e);
+        // Element selector buttons (1..10) + Neutral/Ion radio
+        let btns = '';
+        for (let z = 1; z <= 10; z++) {
+          btns += `<button type="button" onclick="selectQuizElement(${z})" id="q1-el-${z}"
+            class="px-2.5 py-1.5 rounded-lg border-2 border-slate-300 bg-white hover:border-sky-400 font-bold text-xs sm:text-sm transition cursor-pointer">
+            ${ELEMENTS[z].symbol} <span class="text-[11px] text-slate-500">${ELEMENTS[z].name}</span>
+          </button>`;
+        }
+        answerBox.innerHTML = `
+          <div class="w-full flex flex-col gap-3">
+            <div class="font-bold text-slate-700 text-sm text-center">1. 请选择对应的化学元素：</div>
+            <div class="grid grid-cols-5 gap-1.5">${btns}</div>
+            <div class="font-bold text-slate-700 text-sm text-center mt-1">2. 该粒子属于哪种电性状态？</div>
+            <div class="flex justify-center gap-2">
+              <button type="button" onclick="selectQuizIon('neutral')" id="q1-ion-neutral" class="px-3 py-1.5 rounded-lg border-2 border-slate-300 bg-white font-bold text-xs cursor-pointer">中性原子</button>
+              <button type="button" onclick="selectQuizIon('ion')" id="q1-ion-ion" class="px-3 py-1.5 rounded-lg border-2 border-slate-300 bg-white font-bold text-xs cursor-pointer">离子 (Ion)</button>
+            </div>
+          </div>
+        `;
+      } else if (q.level === 2) {
+        promptBox.innerHTML = renderMiniAtomHTML(q.z, q.n, q.e);
+        const label = q.askMass ? '该原子的【质量数】是多少？' : '该原子的【净电荷】是多少？';
+        answerBox.innerHTML = `
+          <div class="flex flex-col items-center gap-4">
+            <div class="font-black text-slate-800 text-base sm:text-lg text-center">${label}</div>
+            <div class="flex items-center gap-4">
+              <button onclick="stepQuizValue(-1)" class="w-11 h-11 rounded-full bg-slate-200 hover:bg-slate-300 font-black text-2xl text-slate-700 cursor-pointer">−</button>
+              <div id="q2-val-display" class="w-20 h-20 rounded-2xl border-4 border-sky-400 bg-white flex items-center justify-center font-black text-3xl text-slate-800 shadow">0</div>
+              <button onclick="stepQuizValue(1)" class="w-11 h-11 rounded-full bg-slate-200 hover:bg-slate-300 font-black text-2xl text-slate-700 cursor-pointer">+</button>
+            </div>
+          </div>
+        `;
+      } else if (q.level === 3) {
+        promptBox.innerHTML = renderMiniAtomHTML(q.z, q.n, q.e);
+        const el = ELEMENTS[q.z];
+        const chargeStr = q.charge > 0 ? `+${q.charge}` : `${q.charge}`;
+
+        const spinnerHTML = `
+          <div class="flex items-center gap-1 bg-amber-100 border-2 border-amber-500 rounded-lg px-1 py-0.5">
+            <button onclick="stepQuizValue(-1)" class="w-6 h-6 rounded bg-amber-500 text-white font-black text-sm cursor-pointer">−</button>
+            <span id="q3-val-display" class="w-8 text-center font-black text-lg text-amber-900">0</span>
+            <button onclick="stepQuizValue(1)" class="w-6 h-6 rounded bg-amber-500 text-white font-black text-sm cursor-pointer">+</button>
+          </div>
+        `;
+
+        answerBox.innerHTML = `
+          <div class="flex flex-col items-center gap-3">
+            <div class="font-bold text-slate-700 text-sm">请调整高亮方框中的数值，补全元素符号：</div>
+            <div class="w-44 h-44 bg-white border-4 border-slate-800 rounded-2xl shadow-md relative flex items-center justify-center">
+              <div class="absolute top-2.5 left-3">
+                ${q.missingField === 'mass' ? spinnerHTML : `<span class="text-2xl font-black text-slate-800">${q.mass}</span>`}
+              </div>
+              <div class="absolute bottom-2.5 left-3">
+                ${q.missingField === 'protons' ? spinnerHTML : `<span class="text-2xl font-black text-orange-600">${q.z}</span>`}
+              </div>
+              <div class="absolute top-2.5 right-3">
+                ${q.missingField === 'charge' ? spinnerHTML : `<span class="text-2xl font-black text-sky-600">${chargeStr}</span>`}
+              </div>
+              <div class="text-5xl font-black text-slate-900">${el.symbol}</div>
+            </div>
+          </div>
+        `;
+      } else if (q.level === 4) {
+        const el = ELEMENTS[q.targetZ];
+        const chargeStr = q.charge > 0 ? `+${q.charge}` : `${q.charge}`;
+        promptBox.innerHTML = `
+          <div class="flex flex-col items-center gap-2">
+            <div class="text-xs font-bold text-slate-500">请根据下方符号建造对应原子</div>
+            <div class="w-36 h-36 bg-white border-4 border-slate-800 rounded-2xl shadow relative flex items-center justify-center">
+              <span class="absolute top-2 left-3 text-2xl font-black text-slate-800">${q.mass}</span>
+              <span class="absolute bottom-2 left-3 text-2xl font-black text-orange-600">${q.targetZ}</span>
+              <span class="absolute top-2 right-3 text-2xl font-black text-sky-600">${chargeStr}</span>
+              <span class="text-5xl font-black text-slate-900">${el.symbol}</span>
+            </div>
+          </div>
+        `;
+        answerBox.innerHTML = `
+          <div class="flex flex-col gap-3 w-full max-w-xs">
+            <div class="flex items-center justify-between bg-white p-2.5 rounded-xl border border-slate-200">
+              <span class="font-bold text-orange-600 text-sm">质子 (+)</span>
+              <div class="flex items-center gap-3">
+                <button onclick="stepQ4Particle('curP', -1)" class="w-8 h-8 rounded-lg bg-slate-200 font-black cursor-pointer">−</button>
+                <span id="q4-curP" class="w-6 text-center font-black text-lg">0</span>
+                <button onclick="stepQ4Particle('curP', 1)" class="w-8 h-8 rounded-lg bg-orange-500 text-white font-black cursor-pointer">+</button>
+              </div>
+            </div>
+            <div class="flex items-center justify-between bg-white p-2.5 rounded-xl border border-slate-200">
+              <span class="font-bold text-slate-700 text-sm">中子 (0)</span>
+              <div class="flex items-center gap-3">
+                <button onclick="stepQ4Particle('curN', -1)" class="w-8 h-8 rounded-lg bg-slate-200 font-black cursor-pointer">−</button>
+                <span id="q4-curN" class="w-6 text-center font-black text-lg">0</span>
+                <button onclick="stepQ4Particle('curN', 1)" class="w-8 h-8 rounded-lg bg-slate-600 text-white font-black cursor-pointer">+</button>
+              </div>
+            </div>
+            <div class="flex items-center justify-between bg-white p-2.5 rounded-xl border border-slate-200">
+              <span class="font-bold text-sky-600 text-sm">电子 (−)</span>
+              <div class="flex items-center gap-3">
+                <button onclick="stepQ4Particle('curE', -1)" class="w-8 h-8 rounded-lg bg-slate-200 font-black cursor-pointer">−</button>
+                <span id="q4-curE" class="w-6 text-center font-black text-lg">0</span>
+                <button onclick="stepQ4Particle('curE', 1)" class="w-8 h-8 rounded-lg bg-sky-600 text-white font-black cursor-pointer">+</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    function selectQuizElement(z) {
+      const q = state.quiz.currentQ;
+      if (q.answered) return;
+      q.selectedZ = z;
+      for (let i = 1; i <= 10; i++) {
+        const btn = document.getElementById(`q1-el-${i}`);
+        btn.className = i === z
+          ? 'px-2.5 py-1.5 rounded-lg border-2 border-orange-500 bg-orange-100 font-black text-xs sm:text-sm transition cursor-pointer'
+          : 'px-2.5 py-1.5 rounded-lg border-2 border-slate-300 bg-white hover:border-sky-400 font-bold text-xs sm:text-sm transition cursor-pointer';
+      }
+    }
+
+    function selectQuizIon(type) {
+      const q = state.quiz.currentQ;
+      if (q.answered) return;
+      q.selectedIon = type;
+      ['neutral', 'ion'].forEach(t => {
+        const btn = document.getElementById(`q1-ion-${t}`);
+        btn.className = t === type
+          ? 'px-3 py-1.5 rounded-lg border-2 border-sky-600 bg-sky-100 text-sky-900 font-black text-xs cursor-pointer'
+          : 'px-3 py-1.5 rounded-lg border-2 border-slate-300 bg-white font-bold text-xs cursor-pointer';
+      });
+    }
+
+    function stepQuizValue(delta) {
+      const q = state.quiz.currentQ;
+      if (q.answered) return;
+      q.userVal = Math.max(-10, Math.min(25, q.userVal + delta));
+      const str = (q.level === 2 && !q.askMass && q.userVal > 0) || (q.level === 3 && q.missingField === 'charge' && q.userVal > 0)
+        ? `+${q.userVal}` : `${q.userVal}`;
+      const el2 = document.getElementById('q2-val-display');
+      const el3 = document.getElementById('q3-val-display');
+      if (el2) el2.textContent = str;
+      if (el3) el3.textContent = str;
+    }
+
+    function stepQ4Particle(key, delta) {
+      const q = state.quiz.currentQ;
+      if (q.answered) return;
+      q[key] = Math.max(0, Math.min(13, q[key] + delta));
+      document.getElementById(`q4-${key}`).textContent = q[key];
+    }
+
+    function checkQuizAnswer() {
+      const qz = state.quiz;
+      const q = qz.currentQ;
+      const feedback = document.getElementById('quiz-feedback');
+      let isCorrect = false;
+
+      if (q.level === 1) {
+        if (!q.selectedZ || !q.selectedIon) {
+          feedback.textContent = '⚠️ 请先选择元素和电性状态！';
+          feedback.className = 'font-bold text-sm text-amber-600';
+          return;
+        }
+        const expectedIon = q.charge === 0 ? 'neutral' : 'ion';
+        isCorrect = (q.selectedZ === q.z && q.selectedIon === expectedIon);
+      } else if (q.level === 2) {
+        const expected = q.askMass ? q.mass : q.charge;
+        isCorrect = (q.userVal === expected);
+      } else if (q.level === 3) {
+        const expected = q.missingField === 'mass' ? q.mass : q.missingField === 'protons' ? q.z : q.charge;
+        isCorrect = (q.userVal === expected);
+      } else if (q.level === 4) {
+        isCorrect = (q.curP === q.targetZ && q.curN === q.targetN && q.curE === q.targetE);
+      }
+
+      q.answered = true;
+      document.getElementById('btn-check-answer').classList.add('hidden');
+      document.getElementById('btn-next-question').classList.remove('hidden');
+
+      if (isCorrect) {
+        qz.score += 2;
+        document.getElementById('quiz-score').textContent = qz.score;
+        feedback.textContent = '🎉 回答正确！太棒了！(+2 分)';
+        feedback.className = 'font-black text-sm sm:text-base text-emerald-600';
+        playTone('correct');
+      } else {
+        const el = ELEMENTS[q.z || q.targetZ];
+        feedback.textContent = `❌ 回答有误。正确答案：${el.name}(${el.symbol})，质子=${q.z || q.targetZ}，中子=${q.n ?? q.targetN}，电子=${q.e ?? q.targetE}`;
+        feedback.className = 'font-bold text-xs sm:text-sm text-rose-600';
+        playTone('wrong');
+      }
+    }
+
+    function nextQuizQuestion() {
+      const qz = state.quiz;
+      qz.qIndex++;
+      if (qz.qIndex >= 5) {
+        // Show Summary
+        const stars = Math.round(qz.score / 2);
+        state.gameStars[qz.level] = Math.max(state.gameStars[qz.level], stars);
+        document.getElementById('game-arena').classList.add('hidden');
+        document.getElementById('game-summary').classList.remove('hidden');
+        document.getElementById('summary-stars').textContent = '★'.repeat(stars) + '☆'.repeat(5 - stars);
+        document.getElementById('summary-score-text').textContent = `最终得分: ${qz.score} / 10`;
+        playTone('correct');
+      } else {
+        qz.currentQ = generateQuestion(qz.level);
+        renderQuizQuestion();
+      }
+    }
+
+    /* ==========================================================================
+       9. INITIALIZATION ON WINDOW LOAD
+       ========================================================================== */
+    window.addEventListener('resize', resizeCanvas);
+
+    window.onload = function () {
+      initPeriodicTable();
+      resizeCanvas();
+      updateUI();
+      requestAnimationFrame(renderAtomCanvas);
+    };
+  </script>
+</body>
+</html>
